@@ -9,13 +9,11 @@
 * Updates are triggered by page views, so if no one views a page then no new data is fetched (but that is okay, because if no one views the page then that means the data has not changed).
 ***************************************************/
 
-// Data source adapters
-require('data-sources/sharedcount.com.php');
-// require('data-sources/googleanalytics.php'); // Not working in this version
-
 class MetricsUpdater {
 
 	private $options;
+	public $SharedCountUpdater;
+	public $GoogleAnalyticsUpdater; // needs to be accessed from Settings page
 
 	public function __construct($options = false) {
 
@@ -23,13 +21,13 @@ class MetricsUpdater {
 		$this->options = ($options) ? $options : get_option('smt_settings');
 
 		// Import adapters for 3rd party services
-		if (class_exists('SharedCountUpdater') && $this->options['smt_options_enable_social']) {
-			$SharedCountUpdater = new SharedCountUpdater();
+		if (class_exists('SharedCountUpdater')) {
+			$this->SharedCountUpdater = new SharedCountUpdater();
 		}
 
 		// If analytics are being tracked, pull update
-		if (class_exists('GoogleAnalyticsUpdater') && $this->options['smt_options_enable_analytics']) {
-			$GoogleAnalyticsUpdater = new GoogleAnalyticsUpdater();
+		if (class_exists('GoogleAnalyticsUpdater')) {
+			$this->GoogleAnalyticsUpdater = new GoogleAnalyticsUpdater();
 		}
 
 		// Check post on each page load
@@ -54,28 +52,46 @@ class MetricsUpdater {
 		// If no post ID specified, use current page
 		if ($post_id <= 0) $post_id = $post->ID;
 
+		// Get post types to track
+		$types = $this->get_post_types();
+
 		// Validation
-		if ($post_id <= 0) 						return false;
-		if ($post->post_type == 'attachment') 	return false;
-		if ($post->post_status != 'publish') 	return false;
+		if (is_admin()) 							return false;
+		if ($post_id <= 0) 							return false; 
+		if ($post->post_status != 'publish') 		return false; // Allow only published posts
+		if ((count($types) > 0) && !is_singular($types)) return false; // Allow singular view of enabled post types
 
 		// Check TTL timeout
 		$last_updated = get_post_meta($post_id, "socialcount_LAST_UPDATED", true);
 		$ttl = $this->options['smt_options_ttl_hours'] * 3600;
 
 		// If no timeout
-		$ttl = 0;
 		$temp = time() - $ttl;
 		if ($last_updated < $temp) {
 
 			// Schedule an update
 			wp_schedule_single_event( time(), 'social_metrics_update_single_post', array( $post_id ) );
-		} else {
 
-		}
+		} 
 
 		return;
 	} // end checkThisPost()
+
+	// Return an array of post types we currently track
+	public function get_post_types() {
+
+		$types_to_track = array();
+
+		$smt_post_types = get_post_types( array('public'=>true), 'names' ); 
+		unset($smt_post_types['attachment']);
+
+		foreach ($smt_post_types as $type) {
+			if ($this->options['smt_options_post_types_'.$type] == $type) $types_to_track[] = $type;
+		}
+
+		return $types_to_track;
+
+	}
 
 	/**
 	* Fetch new stats from remote services and update post social score.
@@ -101,26 +117,27 @@ class MetricsUpdater {
 		$post = get_post($post_id);
 
 		// Calculate aggregate score.
-		$social_aggregate_score_detail = $this->calculateScoreAggregate($stats['socialcount_TOTAL'], $stats['ga_pageviews'], $post->comment_count);
-
-		update_post_meta($post_id, "social_aggregate_score", $social_aggregate_score_detail['total']);
-		update_post_meta($post_id, "social_aggregate_score_detail", $social_aggregate_score_detail);
-
-		$stats['social_aggregate_score'] = $social_aggregate_score_detail['total'];
-
+		$social_aggregate_score_detail = $this->calculateScoreAggregate(
+																	get_post_meta($post_id, 'socialcount_TOTAL', true),
+																	get_post_meta($post_id, 'ga_pageviews', true),
+																	$post->comment_count
+																	);
+		
 		// Calculate decayed score.
 		$social_aggregate_score_decayed = $this->calculateScoreDecay($social_aggregate_score_detail['total'], $post->post_date);
 
+		update_post_meta($post_id, "social_aggregate_score", $social_aggregate_score_detail['total']);
+		update_post_meta($post_id, "social_aggregate_score_detail", $social_aggregate_score_detail);
 		update_post_meta($post_id, "social_aggregate_score_decayed", $social_aggregate_score_decayed);
 		update_post_meta($post_id, "social_aggregate_score_decayed_last_updated", time());
 
-		$stats['social_aggregate_score_decayed'] = $social_aggregate_score_decayed;
+		$smt_stats['social_aggregate_score'] = $social_aggregate_score_detail['total'];
+		$smt_stats['social_aggregate_score_decayed'] = $social_aggregate_score_decayed;
 
 		// Custom action hook allows us to extend this function.
-		do_action('social_metrics_sync', $post_id, $stats); // remove this after updating other references
-		do_action('social_metrics_data_sync_complete', $post_id, $stats);
+		do_action('social_metrics_data_sync_complete', $post_id, $smt_stats);
 
-		return $stats['socialcount_TOTAL'];
+		return;
 	} // end updatePostStats()
 
 	/**

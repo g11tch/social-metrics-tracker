@@ -1,5 +1,10 @@
 <?php
 
+$smt_post_types = get_post_types( array('public'=>true, 'show_ui'=>true), 'names' ); 
+
+// Do not allow attachments
+unset($smt_post_types['attachment']);
+
 global $wpsf_settings;
 
 $wpsf_settings = array();
@@ -10,6 +15,16 @@ $wpsf_settings[] = array(
 	'section_description' => 'Configuration for the operation of the plugin and display of data.',
 	'section_order'       => 10,
 	'fields' => array(
+		array(
+            'id' => 'post_types',
+            'title' => 'Post Types',
+            'desc' => 'Which post types should we track?',
+            'type' => 'checkboxes',
+            'std' => array(
+                'post'
+            ),
+            'choices' => $smt_post_types
+        ),
 		array(
 			'id'    => 'display_widget',
 			'title' => 'Dashboard Widget',
@@ -31,20 +46,6 @@ $wpsf_settings[] = array(
 				'edit_posts'        => 'Contributors (Users who can edit their own posts)',
 				'read'              => 'Subscribers (Users who can read)'
 			)
-		),
-		array(
-			'id'    => 'enable_social',
-			'title' => 'Track Social',
-			'desc'  => 'Track and display social data',
-			'type'  => 'checkbox',
-			'std'   => 1
-		),
-		array(
-			'id'    => 'enable_comments',
-			'title' => 'Track Comments',
-			'desc'  => 'Display the number of comments on each item.',
-			'type'  => 'checkbox',
-			'std'   => 1
 		),
 		array(
 			'id'    => 'ttl_hours',

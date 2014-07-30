@@ -3,7 +3,7 @@
 Plugin Name: Social Metrics Tracker
 Plugin URI: https://github.com/ChapmanU/wp-social-metrics-tracker
 Description: Collect and display social network shares, likes, tweets, and view counts of posts.
-Version: 1.0.2
+Version: 1.1.0
 Author: Ben Cole, Chapman University
 Author URI: http://www.bencole.net
 License: GPLv2+
@@ -24,17 +24,19 @@ License: GPLv2+
 
 
 // Class Dependancies
-include('MetricsUpdater.class.php');
+require_once('MetricsUpdater.class.php');
+require_once('data-sources/sharedcount.com.php');
+require_once('data-sources/google_analytics.php');
+include_once('SocialMetricsSettings.class.php');
+include_once('SocialMetricsTrackerWidget.class.php');
 
 class SocialMetricsTracker {
 
+	private $version = '1.1.0'; // for db upgrade comparison
 	private $updater;
 	private $options;
 
 	public function __construct() {
-
-		// Set up options
-		$this->options = get_option('smt_settings');
 
 		// Plugin activation hooks
 		register_activation_hook( __FILE__, array($this, 'activate') );
@@ -44,7 +46,20 @@ class SocialMetricsTracker {
 		if (is_admin()) {
 			add_action('admin_menu', array($this,'adminMenuSetup'));
 			add_action('admin_enqueue_scripts', array($this, 'adminHeaderScripts'));
+			add_action('plugins_loaded', array($this, 'version_check'));
 		}
+
+		add_action('init', array($this, 'init'));
+
+	} // end constructor
+
+	public function init() {
+
+		// Set up options
+		$this->options = get_option('smt_settings');
+
+		// Ensure setup occurs when network activated
+		if ($this->options === false) $this->activate();
 
 		// Check if we can enable data syncing
 		if (defined('WP_ENV') && strtolower(WP_ENV) != 'production' || $_SERVER['REMOTE_ADDR'] == '127.0.0.1') {
@@ -54,14 +69,19 @@ class SocialMetricsTracker {
 			$this->updater = new MetricsUpdater($this->options);
 		}
 
-	} // end constructor
+		// Manual data update for a post
+		if (is_admin() && $this->updater && $_REQUEST['smt_sync_now']) {
+			$this->updater->updatePostStats($_REQUEST['smt_sync_now']);
+			header("Location: ".remove_query_arg('smt_sync_now'));
+		}
+	}
 
 	public function developmentServerNotice() {
 		if (!current_user_can('manage_options')) return false;
 
 		$screen = get_current_screen();
 
-		if (!in_array($screen->base, array('settings_page_social-metrics-tracker-settings', 'toplevel_page_social-metrics-tracker', 'social-metrics-tracker_page_social-metrics-tracker-debug'))) {
+		if (!in_array($screen->base, array('social-metrics_page_social-metrics-tracker-settings', 'toplevel_page_social-metrics-tracker', 'social-metrics-tracker_page_social-metrics-tracker-debug'))) {
 			return false;
 		}
 
@@ -90,7 +110,7 @@ class SocialMetricsTracker {
 
 		// Add Social Metrics Tracker menu
 		$visibility = ($this->options['smt_options_report_visibility']) ? $this->options['smt_options_report_visibility'] : 'manage_options';
-		add_menu_page( 'Social Metrics Tracker', 'Social Metrics', $visibility, 'social-metrics-tracker', array($this, 'render_view_Dashboard'), 'dashicons-chart-area', 30 );
+		add_menu_page( 'Social Metrics Tracker', 'Social Metrics', $visibility, 'social-metrics-tracker', array($this, 'render_view_Dashboard'), 'dashicons-chart-area', '30.597831' );
 
 		// Add advanced stats menu
 		if ($this->options['smt_options_debug_mode']) {
@@ -98,8 +118,8 @@ class SocialMetricsTracker {
 			add_submenu_page('social-metrics-tracker', 'Relevancy Rank', 'Debug Info', $debug_visibility, 'social-metrics-tracker-debug',  array($this, 'render_view_AdvancedDashboard'));
 		}
 
-		include_once('smt-settings-setup.php');
-		include_once('smt-dashboard-widget.php');
+		new socialMetricsSettings($this->updater->GoogleAnalyticsUpdater);
+		new SocialMetricsTrackerWidget();
 
 	} // end adminMenuSetup()
 
@@ -140,12 +160,26 @@ class SocialMetricsTracker {
 		return "$difference $periods[$j] ago";
 	}
 
+	/***************************************************
+	* Check the version of the plugin and perform upgrade tasks if necessary 
+	***************************************************/
+	public function version_check() {
+		$installed_version = get_option( "smt_version" );
+
+		if( $installed_version != $this->version ) {
+			update_option( "smt_version", $this->version );
+
+			// Do upgrade tasks
+			
+		}
+	}
+
 	public function activate() {
 		// Add default settings
 
 		if (get_option('smt_settings') === false) {
 
-			require('smt-settings.php');
+			require('settings/smt-general.php');
 
 			global $wpsf_settings;
 
@@ -166,6 +200,8 @@ class SocialMetricsTracker {
 			MetricsUpdater::scheduleFullDataSync();
 		}
 
+		$this->version_check();
+
 	}
 
 	public function deactivate() {
@@ -175,7 +211,7 @@ class SocialMetricsTracker {
 
 	}
 
-	public function uninstall() {
+	public static function uninstall() {
 
 		// Delete options
 		delete_option('smt_settings');

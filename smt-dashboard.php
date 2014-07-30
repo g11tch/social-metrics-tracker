@@ -5,18 +5,17 @@
 *
 * http://wordpress.org/plugins/custom-list-table-example/
 ***************************************************/
-
 if(!class_exists('WP_List_Table')){
-	// We include a copy of WP_List_Table with this plugin because this class is marked as Private in the Wordpress core and could change at any time.
-	require_once( 'lib/class-wp-list-table.php' );
+	require_once( ABSPATH . 'wp-admin/includes/class-wp-list-table.php' );
 }
-
 class SocialMetricsTable extends WP_List_Table {
 
 	function __construct(){
 		global $status, $page;
 
 		$this->options = get_option('smt_settings');
+
+		$this->gapi = new GoogleAnalyticsUpdater(); 
 
 		$this->services = array(
 			'facebook'   => 'Facebook', 
@@ -61,9 +60,9 @@ class SocialMetricsTable extends WP_List_Table {
 
 		//Build row actions
 		$actions = array(
-			'view'      => sprintf('<a href="%s">View</a>',$item['permalink']),
-			'edit'      => sprintf('<a href="post.php?post=%s&action=edit">Edit</a>',$item['ID']),
-			'update'    => sprintf('Updated %s',SocialMetricsTracker::timeago($item['socialcount_LAST_UPDATED']))
+			'edit'    => sprintf('<a href="post.php?post=%s&action=edit">Edit Post</a>',$item['ID']),
+			'update'  => '<a href="'.add_query_arg( 'smt_sync_now', $item['ID']).'">Update Stats</a>',
+			'info'    => sprintf('Updated %s',SocialMetricsTracker::timeago($item['socialcount_LAST_UPDATED']))
 		);
 
 		//Return the title contents
@@ -115,15 +114,11 @@ class SocialMetricsTable extends WP_List_Table {
 		$columns['date'] = 'Date';
 		$columns['title'] = 'Title';
 
-		if ($this->options['smt_options_enable_social']) {
-			$columns['social'] = 'Social Score';
-		}
-		if ($this->options['smt_options_enable_analytics']) {
+		$columns['social'] = 'Social Score';
+		if ($this->gapi->can_sync()) {
 			$columns['views'] = 'Views';
 		}
-		if ($this->options['smt_options_enable_comments']) {
-			$columns['comments'] = 'Comments';
-		}
+		$columns['comments'] = 'Comments';
 
 		return $columns;
 	}
@@ -166,6 +161,73 @@ class SocialMetricsTable extends WP_List_Table {
 		return $where;
 	}
 
+	/*
+	 * This action tweaks the query to handle sorting in the dashboard.
+	 */
+	function handle_dashboard_sorting($query) {
+		
+		// get order
+		// this should be taken care of by default but something is interfering
+		// If no order, default is DESC
+		$query->set( 'order', ! empty( $_REQUEST[ 'order' ] ) ? $_REQUEST[ 'order' ] : 'DESC' );
+		
+		// get orderby
+		// If no sort, then get default option
+		$orderby = ! empty( $_REQUEST[ 'orderby' ] ) ? $_REQUEST[ 'orderby' ] : $this->options[ 'smt_options_default_sort_column' ];
+				
+		// tweak query based on orderby
+		switch( $orderby ) {
+		
+			case 'aggregate':
+			
+				$query->set( 'orderby', 'meta_value_num' );
+				$query->set( 'meta_key', 'social_aggregate_score' );
+				break;
+				
+			case 'comments':
+			
+				$query->set( 'orderby', 'comment_count' );				
+				break;
+				
+			case 'post_date':
+			
+				$query->set( 'orderby', 'post_date' );			
+				break;
+				
+			case 'social':
+			
+				$query->set( 'orderby', 'meta_value_num' );
+				$query->set( 'meta_key', 'socialcount_TOTAL' );				
+				break;
+				
+			case 'views':
+			
+				$query->set( 'orderby', 'meta_value_num' );
+				$query->set( 'meta_key', 'ga_pageviews' );
+				
+				break;
+		
+		}
+
+		$query = apply_filters( 'smt_dashboard_query', $query ); // Allows developers to add additional query params
+
+	}
+
+	// Return an array of post types we currently track
+	public function get_post_types() {
+
+		$types_to_track = array();
+
+		$smt_post_types = get_post_types( array('public'=>true), 'names' ); 
+		unset($smt_post_types['attachment']);
+
+		foreach ($smt_post_types as $type) {
+			if ($this->options['smt_options_post_types_'.$type] == $type) $types_to_track[] = $type;
+		}
+
+		return $types_to_track;
+
+	}
 
 	function prepare_items() {
 		global $wpdb; //This is used only if making any database queries
@@ -180,73 +242,24 @@ class SocialMetricsTable extends WP_List_Table {
 
 		$this->process_bulk_action();
 
-		$order = (!empty($_REQUEST['order'])) ? $_REQUEST['order'] : 'DESC'; //If no order, default
-		$orderby = (!empty($_REQUEST['orderby'])) ? $_REQUEST['orderby'] : $this->options['smt_options_default_sort_column']; //If no sort, default
-
 		// Get custom post types to display in our report.
-		$post_types = get_post_types(array('public'=>true, 'show_ui'=>true));
-		unset($post_types['page']);
-		unset($post_types['attachment']);
+		$post_types = $this->get_post_types();
 
 		$limit = 30;
 
+		// Filter our query results
 		add_filter( 'posts_where', array($this, 'date_range_filter') );
+		add_filter( 'pre_get_posts', array($this, 'handle_dashboard_sorting') ); 
 
-		if ($orderby == 'views') {
-			$querydata = new WP_Query(array(
-				'order'=>$order,
-				'orderby'=>'meta_value_num',
-				'meta_key'=>'ga_pageviews',
-				'posts_per_page'=>$limit,
-				'post_status'   => 'publish',
-				'post_type'     => $post_types
-			));
-		}
+		$querydata = new WP_Query(array(
+			'posts_per_page'=> $limit,
+			'post_status'	=> 'publish',
+			'post_type'		=> $post_types
+		));
 
-		if ($orderby == 'comments') {
-			$querydata = new WP_Query(array(
-				'order'=>$order,
-				'orderby'=>'comment_count',
-				'posts_per_page'=>$limit,
-				'post_status'   => 'publish',
-				'post_type'     => $post_types
-			));
-		}
-
-		if ($orderby == 'social') {
-			$querydata = new WP_Query(array(
-				'order'=>$order,
-				'orderby'=>'meta_value_num',
-				'meta_key'=>'socialcount_TOTAL',
-				'posts_per_page'=>$limit,
-				'post_status'   => 'publish',
-				'post_type'     => $post_types
-			));
-		}
-
-		if ($orderby == 'aggregate') {
-			$querydata = new WP_Query(array(
-				'order'=>$order,
-				'orderby'=>'meta_value_num',
-				'meta_key'=>'social_aggregate_score',
-				'posts_per_page'=>$limit,
-				'post_status'   => 'publish',
-				'post_type'     => $post_types
-			));
-		}
-
-		if ($orderby == 'post_date') {
-			$querydata = new WP_Query(array(
-				'order'=>$order,
-				'orderby'=>'post_date',
-				'posts_per_page'=>$limit,
-				'post_status'   => 'publish',
-				'post_type'     => $post_types
-			));
-		}
-
-		// Remove our date filter
+		// Remove our filters
 		remove_filter( 'posts_where', array($this, 'date_range_filter') );
+		remove_filter( 'pre_get_posts', array($this, 'handle_dashboard_sorting') );
 
 		$data=array();
 
@@ -314,6 +327,8 @@ class SocialMetricsTable extends WP_List_Table {
 						<option value="12"<?php if ($range == 12) echo 'selected="selected"'; ?>>Items published within 12 Months</option>
 						<option value="0"<?php if ($range == 0) echo 'selected="selected"'; ?>>Items published anytime</option>
 					</select>
+					
+					<?php do_action( 'smt_dashboard_query_options' ); // Allows developers to add additional sort options ?>
 
 					<input type="submit" name="filter" id="submit_filter" class="button" value="Filter">
 
@@ -369,4 +384,5 @@ function smt_render_dashboard_view($options){
 	</div>
 	<?php
 }
+
 ?>
