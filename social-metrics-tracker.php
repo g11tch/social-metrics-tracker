@@ -3,7 +3,7 @@
 Plugin Name: Social Metrics Tracker
 Plugin URI: https://github.com/ChapmanU/wp-social-metrics-tracker
 Description: Collect and display social network shares, likes, tweets, and view counts of posts.
-Version: 1.1.1
+Version: 1.2.0
 Author: Ben Cole, Chapman University
 Author URI: http://www.bencole.net
 License: GPLv2+
@@ -32,7 +32,7 @@ include_once('SocialMetricsTrackerWidget.class.php');
 
 class SocialMetricsTracker {
 
-	private $version = '1.1.1'; // for db upgrade comparison
+	private $version = '1.2.0'; // for db upgrade comparison
 	private $updater;
 	private $options;
 
@@ -47,6 +47,7 @@ class SocialMetricsTracker {
 			add_action('admin_menu', array($this,'adminMenuSetup'));
 			add_action('admin_enqueue_scripts', array($this, 'adminHeaderScripts'));
 			add_action('plugins_loaded', array($this, 'version_check'));
+			add_action('wp_dashboard_setup', array($this, 'dashboard_setup'));
 		}
 
 		add_action('init', array($this, 'init'));
@@ -70,9 +71,15 @@ class SocialMetricsTracker {
 		}
 
 		// Manual data update for a post
-		if (is_admin() && $this->updater && $_REQUEST['smt_sync_now']) {
+		if (is_admin() && $this->updater && isset($_REQUEST['smt_sync_now']) && $_REQUEST['smt_sync_now']) {
 			$this->updater->updatePostStats($_REQUEST['smt_sync_now']);
 			header("Location: ".remove_query_arg('smt_sync_now'));
+		}
+
+		// Data export tool
+		if (is_admin() && isset($_GET['smt_download_export_file']) && $_GET['smt_download_export_file'] && $_GET['page'] == 'social-metrics-tracker-export') {
+			require('smt-export.php');
+			smt_download_export_file($this);
 		}
 	}
 
@@ -118,10 +125,16 @@ class SocialMetricsTracker {
 			add_submenu_page('social-metrics-tracker', 'Relevancy Rank', 'Debug Info', $debug_visibility, 'social-metrics-tracker-debug',  array($this, 'render_view_AdvancedDashboard'));
 		}
 
+		// Export page
+		add_submenu_page('social-metrics-tracker', 'Data Export Tool', 'Export Data', $visibility, 'social-metrics-tracker-export',  array($this, 'render_view_export'));
+
 		new socialMetricsSettings($this->updater->GoogleAnalyticsUpdater);
-		new SocialMetricsTrackerWidget();
 
 	} // end adminMenuSetup()
+
+	public function dashboard_setup() {
+		new SocialMetricsTrackerWidget();
+	}
 
 	public function render_view_Dashboard() {
 		require('smt-dashboard.php');
@@ -132,6 +145,11 @@ class SocialMetricsTracker {
 		require('smt-dashboard-debug.php');
 		smt_render_dashboard_debug_view($this->options);
 	} // end render_view_AdvancedDashboard()
+
+	public function render_view_export() {
+		require('smt-export.php');
+		smt_render_export_view($this);
+	}
 
 	public function render_view_Settings() {
 		require('smc-settings-view.php');
@@ -158,6 +176,22 @@ class SocialMetricsTracker {
 		}
 
 		return "$difference $periods[$j] ago";
+	}
+
+	/***************************************************
+	* Return an array of the post types we are currently tracking
+	***************************************************/
+	function tracked_post_types() {
+		$types_to_track = array();
+
+		$smt_post_types = get_post_types( array( 'public' => true ), 'names' ); 
+		unset($smt_post_types['attachment']);
+
+		foreach ($smt_post_types as $type) {
+			if ($this->options['smt_options_post_types_'.$type] == $type) $types_to_track[] = $type;
+		}
+
+		return $types_to_track;
 	}
 
 	/***************************************************
