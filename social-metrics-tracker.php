@@ -3,7 +3,7 @@
 Plugin Name: Social Metrics Tracker
 Plugin URI: https://github.com/ChapmanU/wp-social-metrics-tracker
 Description: Collect and display social network shares, likes, tweets, and view counts of posts.
-Version: 1.2.0
+Version: 1.2.1
 Author: Ben Cole, Chapman University
 Author URI: http://www.bencole.net
 License: GPLv2+
@@ -32,9 +32,9 @@ include_once('SocialMetricsTrackerWidget.class.php');
 
 class SocialMetricsTracker {
 
-	private $version = '1.2.0'; // for db upgrade comparison
-	private $updater;
-	private $options;
+	private $version = '1.2.1'; // for db upgrade comparison
+	public $updater;
+	public $options;
 
 	public function __construct() {
 
@@ -63,7 +63,7 @@ class SocialMetricsTracker {
 		if ($this->options === false) $this->activate();
 
 		// Check if we can enable data syncing
-		if (defined('WP_ENV') && strtolower(WP_ENV) != 'production' || $_SERVER['REMOTE_ADDR'] == '127.0.0.1') {
+		if ($this->is_development_server()) {
 			add_action('admin_notices', array($this, 'developmentServerNotice'));
 
 		} else if (is_array($this->options)) {
@@ -81,6 +81,11 @@ class SocialMetricsTracker {
 			require('smt-export.php');
 			smt_download_export_file($this);
 		}
+	}
+
+	// Determines if we are on a development or staging environment
+	public function is_development_server() {
+		return (defined('WP_ENV') && strtolower(WP_ENV) != 'production' || $_SERVER['REMOTE_ADDR'] == '127.0.0.1');
 	}
 
 	public function developmentServerNotice() {
@@ -128,7 +133,7 @@ class SocialMetricsTracker {
 		// Export page
 		add_submenu_page('social-metrics-tracker', 'Data Export Tool', 'Export Data', $visibility, 'social-metrics-tracker-export',  array($this, 'render_view_export'));
 
-		new socialMetricsSettings($this->updater->GoogleAnalyticsUpdater);
+		new socialMetricsSettings($this);
 
 	} // end adminMenuSetup()
 
@@ -138,7 +143,7 @@ class SocialMetricsTracker {
 
 	public function render_view_Dashboard() {
 		require('smt-dashboard.php');
-		smt_render_dashboard_view($this->options);
+		smt_render_dashboard_view($this);
 	} // end render_view_Dashboard()
 
 	public function render_view_AdvancedDashboard() {
@@ -181,17 +186,18 @@ class SocialMetricsTracker {
 	/***************************************************
 	* Return an array of the post types we are currently tracking
 	***************************************************/
-	function tracked_post_types() {
+	public function tracked_post_types() {
 		$types_to_track = array();
 
 		$smt_post_types = get_post_types( array( 'public' => true ), 'names' ); 
 		unset($smt_post_types['attachment']);
 
 		foreach ($smt_post_types as $type) {
-			if ($this->options['smt_options_post_types_'.$type] == $type) $types_to_track[] = $type;
+			if (isset($this->options['smt_options_post_types_'.$type]) && $this->options['smt_options_post_types_'.$type] == $type) $types_to_track[] = $type;
 		}
 
-		return $types_to_track;
+		// If none selected, default post types
+		return ($types_to_track) ? $types_to_track : array_values($smt_post_types);
 	}
 
 	/***************************************************
@@ -217,8 +223,6 @@ class SocialMetricsTracker {
 
 			global $wpsf_settings;
 
-			// $defaults = array("hello" => "test");
-
 			foreach ($wpsf_settings[0]['fields'] as $setting) {
 				$defaults['smt_options_'.$setting['id']] = $setting['std'];
 			}
@@ -227,7 +231,7 @@ class SocialMetricsTracker {
 		}
 
 
-		if (defined('WP_ENV') && strtolower(WP_ENV) != 'production' || $_SERVER['REMOTE_ADDR'] == '127.0.0.1') {
+		if ($this-is_development_server()) {
 			// Do not schedule update
 		} else {
 			// Sync all data
