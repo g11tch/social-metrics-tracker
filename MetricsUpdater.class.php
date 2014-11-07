@@ -9,6 +9,14 @@
 * Updates are triggered by page views, so if no one views a page then no new data is fetched (but that is okay, because if no one views the page then that means the data has not changed).
 ***************************************************/
 
+require_once('data-sources/HTTPResourceUpdater.class.php');
+require_once('data-sources/FacebookUpdater.class.php');
+require_once('data-sources/TwitterUpdater.class.php');
+require_once('data-sources/LinkedInUpdater.class.php');
+require_once('data-sources/GooglePlusUpdater.class.php');
+require_once('data-sources/PinterestUpdater.class.php');
+require_once('data-sources/StumbleUponUpdater.class.php');
+
 class MetricsUpdater {
 
 	private $options;
@@ -20,16 +28,6 @@ class MetricsUpdater {
 		// Set options
 		$this->options = ($options) ? $options : get_option('smt_settings');
 
-		// Import adapters for 3rd party services
-		if (class_exists('SharedCountUpdater')) {
-			$this->SharedCountUpdater = new SharedCountUpdater();
-		}
-
-		// If analytics are being tracked, pull update
-		if (class_exists('GoogleAnalyticsUpdater')) {
-			$this->GoogleAnalyticsUpdater = new GoogleAnalyticsUpdater();
-		}
-
 		// Check post on each page load
 		add_action( 'wp_head', array($this, 'checkThisPost'));
 
@@ -37,7 +35,58 @@ class MetricsUpdater {
 		add_action( 'social_metrics_full_update', array( $this, 'scheduleFullDataSync' ) );
 		add_action( 'social_metrics_update_single_post', array( $this, 'updatePostStats' ), 10, 1 );
 
+		// Manual data update for a post
+		if (is_admin() && isset($_REQUEST['smt_sync_now']) && $_REQUEST['smt_sync_now']) {
+			add_action ( 'wp_loaded', array($this, 'manualUpdate') );
+		} else if (is_admin() && isset($_REQUEST['smt_sync_done']) && $_REQUEST['smt_sync_done']) {
+			add_action ( 'admin_notices', array($this, 'manualUpdateNotice') );
+		}
+
 	} // end constructor
+
+	public function setupDataSources() {
+		if (isset($this->dataSourcesReady) && $this->dataSourcesReady) return;
+
+		if (class_exists('GoogleAnalyticsUpdater')) {
+			if (!$this->GoogleAnalyticsUpdater) $this->GoogleAnalyticsUpdater = new GoogleAnalyticsUpdater();
+		}
+
+		// Import adapters for 3rd party services
+		if (!isset($this->FacebookUpdater))    $this->FacebookUpdater    = new FacebookUpdater();
+		if (!isset($this->TwitterUpdater))     $this->TwitterUpdater     = new TwitterUpdater();
+		if (!isset($this->LinkedInUpdater))    $this->LinkedInUpdater    = new LinkedInUpdater();
+		if (!isset($this->GooglePlusUpdater))  $this->GooglePlusUpdater  = new GooglePlusUpdater();
+		if (!isset($this->PinterestUpdater))   $this->PinterestUpdater   = new PinterestUpdater();
+		if (!isset($this->StumbleUponUpdater)) $this->StumbleUponUpdater = new StumbleUponUpdater();
+
+		return $this->dataSourcesReady = true;
+	}
+
+	// Manual data update for a post
+	public function manualUpdate() {
+
+		$post_id = intval( $_REQUEST['smt_sync_now'] );
+		if (!$post_id) return false;
+
+		if (get_post_meta($post_id, 'socialcount_LAST_UPDATED', true) > time()-300) {
+			$message = "You must wait at least 5 minutes before performing another update on this post. ";
+			printf( '<div class="error"> <p> %s </p> </div>', $message);
+		} else {
+			$this->updatePostStats($_REQUEST['smt_sync_now']);
+			header("Location: ".add_query_arg(array('smt_sync_done' => $post_id), remove_query_arg('smt_sync_now')));
+		}
+
+	}
+
+	// Display a notice that we updated a post
+	public function manualUpdateNotice() {
+		$post_id = intval( $_REQUEST['smt_sync_done'] );
+		if (!$post_id) return false;
+
+		$title = get_the_title($post_id);
+		$message = "<b>$title</b> was updated successfully! &nbsp;<a href=\"".remove_query_arg('smt_sync_done')."\">Dismiss</a> ";
+		printf( '<div class="updated"> <p> %s </p> </div>', $message);
+	}
 
 	/**
 	* Check to see if this post requires an update, and if so schedule it.
@@ -102,7 +151,10 @@ class MetricsUpdater {
 	*/
 	public function updatePostStats($post_id) {
 
+		$this->setupDataSources();
+
 		// Data validation
+		$post_id = intval($post_id);
 		if ($post_id <= 0) return false;
 
 		// Remove secure protocol from URL
@@ -111,8 +163,29 @@ class MetricsUpdater {
 		// Retrieve 3rd party data updates
 		do_action('social_metrics_data_sync', $post_id, $permalink);
 
+		// Social Network data
+		$this->FacebookUpdater->sync($post_id, $permalink);
+		$this->TwitterUpdater->sync($post_id, $permalink);
+		$this->LinkedInUpdater->sync($post_id, $permalink);
+		$this->GooglePlusUpdater->sync($post_id, $permalink);
+		$this->PinterestUpdater->sync($post_id, $permalink);
+		$this->StumbleUponUpdater->sync($post_id, $permalink);
+
+		// Calculate new socialcount_TOTAL
+		$all = array (
+		        $this->FacebookUpdater->get_total(),
+		        $this->TwitterUpdater->get_total(),
+		        $this->LinkedInUpdater->get_total(),
+		        $this->GooglePlusUpdater->get_total(),
+		        $this->PinterestUpdater->get_total(),
+		        $this->StumbleUponUpdater->get_total()
+       	);
+
+		update_post_meta($post_id, 'socialcount_TOTAL', array_sum($all));
+
 		// Last updated time
 		update_post_meta($post_id, "socialcount_LAST_UPDATED", time());
+
 
 		// Get comment count from DB
 		$post = get_post($post_id);
@@ -291,15 +364,24 @@ class MetricsUpdater {
 	* This should only be run when the plugin is first installed, or if data syncing was interrupted.
 	*
 	*/
-	public static function scheduleFullDataSync() {
+	public function scheduleFullDataSync($verbose = false) {
+
+		update_option( 'smt_last_full_sync', time() );
 
 		// We are going to stagger the updates so we do not overload the Wordpress cron.
 		$nextTime = time();
 		$interval = 5; // in seconds
 
+		$num = 0;
+
+		$post_types = $this->get_post_types();
+
 		// Get posts that have not ever been updated.
 		// In case the function does not finish, we want to start with posts that have NO data yet.
-		$querydata = query_posts(array(
+		$q = new WP_Query();
+
+		$q->query(array(
+			'post_type'     => $post_types,
 			'order'			=>'DESC',
 			'orderby'		=>'post_date',
 			'posts_per_page'=>-1,
@@ -313,13 +395,22 @@ class MetricsUpdater {
 			)
 		));
 
-		foreach ($querydata as $querydatum ) {
-			wp_schedule_single_event( $nextTime, 'social_metrics_update_single_post', array( $querydatum->ID ) );
+		foreach ($q->posts as $post ) {
+			wp_schedule_single_event( $nextTime, 'social_metrics_update_single_post', array( $post->ID ) );
 			$nextTime = $nextTime + $interval;
+			$num++;
+
+			if ($verbose) {
+				print('<li>Scheduled '.$post->post_type.': '.$post->post_title.'</li>');
+				flush();
+			}
 		}
 
 		// Get posts which HAVE been updated
-		$querydata = query_posts(array(
+		$q = new WP_Query();
+
+		$q->query(array(
+			'post_type'     => $post_types,
 			'order'			=>'DESC',
 			'orderby'		=>'post_date',
 			'posts_per_page'=>-1,
@@ -333,12 +424,18 @@ class MetricsUpdater {
 			)
 		));
 
-		foreach ($querydata as $querydatum ) {
-			wp_schedule_single_event( $nextTime, 'social_metrics_update_single_post', array( $querydatum->ID ) );
+		foreach ($q->posts as $post ) {
+			wp_schedule_single_event( $nextTime, 'social_metrics_update_single_post', array( $post->ID ) );
 			$nextTime = $nextTime + ($interval * 2);
+			$num++;
+
+			if ($verbose) {
+				print('<li>Scheduled '.$post->post_type.': '.$post->post_title.'</li>');
+				flush();
+			}
 		}
 
-		return true;
+		return $num;
 	} // end scheduleFullDataSync()
 
 	// Remove all queued updates from cron.
@@ -362,7 +459,7 @@ class MetricsUpdater {
 		return;
 	} // end removeAllQueuedUpdates()
 
-	public static function printQueueLength() {
+	public static function getQueueLength() {
 		$queue = array();
 		$cron = _get_cron_array();
 		foreach ( $cron as $timestamp => $cronhooks ) {
@@ -375,10 +472,14 @@ class MetricsUpdater {
 			}
 		}
 
-		$count = count($queue);
+		return count($queue);
+	}
+
+	public static function printQueueLength() {
+		$count = MetricsUpdater::getQueueLength();
 		if ($count >= 1) {
 			$label = ($count >=2) ? ' items' : ' item';
-			printf( '<div class="updated"> <p> %s </p> </div>',  'Currently updating <b>'.$count . $label.'</b> with the most recent social and analytics data...');
+			printf( '<div class="updated"> <p> %s </p> </div>',  '<b>'.$count . $label.'</b> scheduled to be synced with social networks the next time WP Cron is run...');
 		}
 	} // end printQueueLength()
 

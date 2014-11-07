@@ -3,7 +3,7 @@
 Plugin Name: Social Metrics Tracker
 Plugin URI: https://github.com/ChapmanU/wp-social-metrics-tracker
 Description: Collect and display social network shares, likes, tweets, and view counts of posts.
-Version: 1.2.5
+Version: 1.3.0
 Author: Ben Cole, Chapman University
 Author URI: http://www.bencole.net
 License: GPLv2+
@@ -25,14 +25,13 @@ License: GPLv2+
 
 // Class Dependancies
 require_once('MetricsUpdater.class.php');
-require_once('data-sources/sharedcount.com.php');
 require_once('data-sources/google_analytics.php');
 include_once('SocialMetricsSettings.class.php');
 include_once('SocialMetricsTrackerWidget.class.php');
 
 class SocialMetricsTracker {
 
-	private $version = '1.2.5'; // for db upgrade comparison
+	public $version = '1.3.0'; // for db upgrade comparison
 	public $updater;
 	public $options;
 
@@ -41,7 +40,6 @@ class SocialMetricsTracker {
 		// Plugin activation hooks
 		register_activation_hook( __FILE__, array($this, 'activate') );
 		register_deactivation_hook( __FILE__, array($this, 'deactivate') );
-		register_uninstall_hook( __FILE__, array('SocialMetricsTracker', 'uninstall') );
 
 		if (is_admin()) {
 			add_action('admin_menu', array($this,'adminMenuSetup'));
@@ -68,12 +66,6 @@ class SocialMetricsTracker {
 
 		} else if (is_array($this->options)) {
 			$this->updater = new MetricsUpdater($this->options);
-		}
-
-		// Manual data update for a post
-		if (is_admin() && $this->updater && isset($_REQUEST['smt_sync_now']) && $_REQUEST['smt_sync_now']) {
-			$this->updater->updatePostStats($_REQUEST['smt_sync_now']);
-			header("Location: ".remove_query_arg('smt_sync_now'));
 		}
 
 		// Data export tool
@@ -209,14 +201,17 @@ class SocialMetricsTracker {
 		if( $installed_version != $this->version ) {
 			update_option( "smt_version", $this->version );
 
-			// Do upgrade tasks
+			// IF migrating from version below 1.3
+			if ($installed_version !== false && version_compare($installed_version, '1.3', '<')) {
+				update_option( 'smt_last_full_sync', 1 );
+			}
 
 		}
 	}
 
 	public function activate() {
-		// Add default settings
 
+		// Add default settings
 		if (get_option('smt_settings') === false) {
 
 			require('settings/smt-general.php');
@@ -230,14 +225,6 @@ class SocialMetricsTracker {
 			add_option('smt_settings', $defaults);
 		}
 
-
-		if ($this->is_development_server()) {
-			// Do not schedule update
-		} else {
-			// Sync all data
-			MetricsUpdater::scheduleFullDataSync();
-		}
-
 		$this->version_check();
 
 	}
@@ -246,13 +233,6 @@ class SocialMetricsTracker {
 
 		// Remove Queued Updates
 		MetricsUpdater::removeAllQueuedUpdates();
-
-	}
-
-	public static function uninstall() {
-
-		// Delete options
-		delete_option('smt_settings');
 
 	}
 
