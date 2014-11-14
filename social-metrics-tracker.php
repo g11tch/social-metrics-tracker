@@ -3,7 +3,7 @@
 Plugin Name: Social Metrics Tracker
 Plugin URI: https://github.com/ChapmanU/wp-social-metrics-tracker
 Description: Collect and display social network shares, likes, tweets, and view counts of posts.
-Version: 1.3.0
+Version: 1.3.1
 Author: Ben Cole, Chapman University
 Author URI: http://www.bencole.net
 License: GPLv2+
@@ -28,10 +28,11 @@ require_once('MetricsUpdater.class.php');
 require_once('data-sources/google_analytics.php');
 include_once('SocialMetricsSettings.class.php');
 include_once('SocialMetricsTrackerWidget.class.php');
+include_once('SocialMetricsDebugger.class.php');
 
 class SocialMetricsTracker {
 
-	public $version = '1.3.0'; // for db upgrade comparison
+	public $version = '1.3.1'; // for db upgrade comparison
 	public $updater;
 	public $options;
 
@@ -63,10 +64,10 @@ class SocialMetricsTracker {
 		// Check if we can enable data syncing
 		if ($this->is_development_server()) {
 			add_action('admin_notices', array($this, 'developmentServerNotice'));
-
-		} else if (is_array($this->options)) {
-			$this->updater = new MetricsUpdater($this->options);
 		}
+
+		$this->updater  = new MetricsUpdater($this);
+		$this->debugger = new SocialMetricsDebugger($this);
 
 		// Data export tool
 		if (is_admin() && isset($_GET['smt_download_export_file']) && $_GET['smt_download_export_file'] && $_GET['page'] == 'social-metrics-tracker-export') {
@@ -106,8 +107,13 @@ class SocialMetricsTracker {
 	}
 
 	public function adminHeaderScripts() {
-		wp_register_style( 'smc_social_metrics_css', plugins_url( 'css/social_metrics.css' , __FILE__ ), false, '11-15-13' );
-		wp_enqueue_style( 'smc_social_metrics_css' );
+
+		wp_register_style( 'smt-css', plugins_url( 'css/social_metrics.css' , __FILE__ ), false, $this->version );
+		wp_enqueue_style( 'smt-css' );
+
+		wp_register_script( 'smt-js', plugins_url( 'js/social-metrics-tracker.js' , __FILE__ ), 'jquery', $this->version );
+		wp_enqueue_script( 'smt-js' );
+
 	} // end adminHeaderScripts()
 
 	public function adminMenuSetup() {
@@ -130,7 +136,7 @@ class SocialMetricsTracker {
 	} // end adminMenuSetup()
 
 	public function dashboard_setup() {
-		new SocialMetricsTrackerWidget();
+		new SocialMetricsTrackerWidget($this);
 	}
 
 	public function render_view_Dashboard() {
@@ -221,6 +227,10 @@ class SocialMetricsTracker {
 			foreach ($wpsf_settings[0]['fields'] as $setting) {
 				$defaults['smt_options_'.$setting['id']] = $setting['std'];
 			}
+
+			// Track these post types by default
+			$defaults['smt_options_post_types_post'] = 'post';
+			$defaults['smt_options_post_types_page'] = 'page';
 
 			add_option('smt_settings', $defaults);
 		}

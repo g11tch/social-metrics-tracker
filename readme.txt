@@ -4,7 +4,7 @@ Donate link: https://www.paypal.com/cgi-bin/webscr?cmd=_s-xclick&hosted_button_i
 Tags: admin, dashboard, social, social media, facebook, twitter, metrics, analytics, tracking, engagement, share, sharing, shares
 Requires at least: 3.5
 Tested up to: 4.0
-Stable tag: 1.3.0
+Stable tag: 1.3.1
 License: GPLv2 or later
 License URI: http://www.gnu.org/licenses/gpl-2.0.html
 
@@ -84,6 +84,12 @@ This plugin was created by Ben Cole, as a member of the Chapman University web m
 
 == Changelog ==
 
+= 1.3.1 =
+* Added a status indicator to show if data is being collected successfully.
+* Dashboard widget shows social network names instead of the word "other"
+* "Schedule Full Sync" should no longer cause memory errors on large blogs.
+* Fixed a bug where Google Analytics could not be configured.
+
 = 1.3.0 =
 * Data is now synced directly from social network APIs instead of relying on the sharedcount.com API
 * Removed Digg.com, and Delicious.com because they no longer provide data.
@@ -134,6 +140,9 @@ This plugin was created by Ben Cole, as a member of the Chapman University web m
 
 
 == Upgrade Notice ==
+
+= 1.3.1 =
+Added better error messages and debug info
 
 = 1.3 =
 Major update which changes the way social data is collected

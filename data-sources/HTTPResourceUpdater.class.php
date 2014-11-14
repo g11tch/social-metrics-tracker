@@ -16,16 +16,21 @@ abstract class HTTPResourceUpdater {
 	public $data;
 	public $meta;
 
+	public $slug;
+	public $name;
+
 	public $meta_prefix = 'socialcount_';
 
 	public $http_error = '';
+	public $complete;
 
-	public function __construct($shortname, $resource_uri) {
+	public function __construct($slug, $name, $resource_uri) {
 
-		$this->shortname = $shortname;
+		$this->slug = $slug;
+		$this->name = $name;
 		$this->resource_uri = $resource_uri;
 
-		$this->wpcb = new WordPressCircuitBreaker($shortname);
+		$this->wpcb = new WordPressCircuitBreaker($slug);
 
 		return $this;
 	}
@@ -70,13 +75,13 @@ abstract class HTTPResourceUpdater {
 	/***************************************************
 	* Retrieve data from our remote resource
 	***************************************************/
-	public function fetch() {
+	public function fetch($force = false) {
 
 		// Validation
 		if (!is_array($this->resource_params)) return false;
 
 		// Circuit breaker
-		if (!$this->wpcb->readyToConnect()) return false;
+		if (!$this->wpcb->readyToConnect() && !$force) return false;
 
 		// Get the data
 		$result = $this->getURL($this->resource_uri, $this->resource_params, $this->resource_request_method);
@@ -129,10 +134,9 @@ abstract class HTTPResourceUpdater {
 		if (is_wp_error($response)) {
 			$this->http_error = $response->get_error_message();
 			return false;
+		} else if ($response['response']['code'] != 200) {
+			$this->http_error = "Received HTTP response code: <b>".$response['response']['code']." ".$response['response']['message']."</b>";
 		}
-
-		// TO-DO:
-		// Still need to catch correct response which is an HTTP error of some kind.
 
 		return wp_remote_retrieve_body($response);
 	}
