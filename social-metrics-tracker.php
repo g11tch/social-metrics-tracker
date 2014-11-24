@@ -3,7 +3,7 @@
 Plugin Name: Social Metrics Tracker
 Plugin URI: https://github.com/ChapmanU/wp-social-metrics-tracker
 Description: Collect and display social network shares, likes, tweets, and view counts of posts.
-Version: 1.3.2
+Version: 1.3.3
 Author: Ben Cole, Chapman University
 Author URI: http://www.bencole.net
 License: GPLv2+
@@ -29,10 +29,12 @@ require_once('data-sources/google_analytics.php');
 include_once('SocialMetricsSettings.class.php');
 include_once('SocialMetricsTrackerWidget.class.php');
 include_once('SocialMetricsDebugger.class.php');
+require_once('lib/Mustache/Autoloader.php');
+
 
 class SocialMetricsTracker {
 
-	public $version = '1.3.2'; // for db upgrade comparison
+	public $version = '1.3.3'; // for db upgrade comparison
 	public $updater;
 	public $options;
 
@@ -76,6 +78,21 @@ class SocialMetricsTracker {
 		}
 	}
 
+	/***************************************************
+	* Renders a template using the Mustache Engine
+	***************************************************/
+	public function renderTemplate($tpl, $data) {
+
+		if (!isset($this->mustache_engine)) {
+			Mustache_Autoloader::register();
+			$this->mustache_engine = new Mustache_Engine(array(
+			    'loader' => new Mustache_Loader_FilesystemLoader(dirname(__FILE__).'/templates'),
+			));
+		}
+
+		return $this->mustache_engine->render($tpl, $data);
+	}
+
 	// Determines if we are on a development or staging environment
 	public function is_development_server() {
 		return ((defined('WP_ENV') && strtolower(WP_ENV) != 'production') || (isset($_SERVER['REMOTE_ADDR']) && $_SERVER['REMOTE_ADDR'] == '127.0.0.1'));
@@ -108,10 +125,10 @@ class SocialMetricsTracker {
 
 	public function adminHeaderScripts() {
 
-		wp_register_style( 'smt-css', plugins_url( 'css/social_metrics.css' , __FILE__ ), false, $this->version );
+		wp_register_style( 'smt-css', plugins_url( 'css/social-metrics-tracker.min.css' , __FILE__ ), false, $this->version );
 		wp_enqueue_style( 'smt-css' );
 
-		wp_register_script( 'smt-js', plugins_url( 'js/social-metrics-tracker.js' , __FILE__ ), 'jquery', $this->version );
+		wp_register_script( 'smt-js', plugins_url( 'js/social-metrics-tracker.min.js' , __FILE__ ), 'jquery', $this->version );
 		wp_enqueue_script( 'smt-js' );
 
 	} // end adminHeaderScripts()
