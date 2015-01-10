@@ -3,7 +3,7 @@
 Plugin Name: Social Metrics Tracker
 Plugin URI: https://github.com/ChapmanU/wp-social-metrics-tracker
 Description: Collect and display social network shares, likes, tweets, and view counts of posts.
-Version: 1.3.3
+Version: 1.3.4
 Author: Ben Cole, Chapman University
 Author URI: http://www.bencole.net
 License: GPLv2+
@@ -34,7 +34,7 @@ require_once('lib/Mustache/Autoloader.php');
 
 class SocialMetricsTracker {
 
-	public $version = '1.3.3'; // for db upgrade comparison
+	public $version = '1.3.4'; // for db upgrade comparison
 	public $updater;
 	public $options;
 
@@ -95,7 +95,7 @@ class SocialMetricsTracker {
 
 	// Determines if we are on a development or staging environment
 	public function is_development_server() {
-		return ((defined('WP_ENV') && strtolower(WP_ENV) != 'production') || (isset($_SERVER['REMOTE_ADDR']) && $_SERVER['REMOTE_ADDR'] == '127.0.0.1'));
+		return (defined('WP_ENV') && strtolower(WP_ENV) != 'production');
 	}
 
 	public function developmentServerNotice() {
@@ -107,17 +107,9 @@ class SocialMetricsTracker {
 			return false;
 		}
 
-		$message = '<h3 style="margin-top:0;">Social Metrics data syncing is disabled</h3> You are on a development server; Social Network share data cannot be retrieved for private development URLs. <ul>';
+		$message = '<h3 style="margin-top:0;">Social Metrics data syncing is disabled</h3> You are on a development server; Social Network share data cannot be retrieved for private development URLs. ';
 
-		if ($_SERVER['REMOTE_ADDR'] == '127.0.0.1') {
-			$message .= "<li>The server IP address appears to be set to 127.0.0.1 which is a local address. </li>";
-		}
-
-		if (defined('WP_ENV') && strtolower(WP_ENV) != 'production') {
-			$message .= "<li>The PHP constant <b>WP_ENV</b> must be set to <b>production</b> or be undefined. WP_ENV is currently set to: <b>".WP_ENV."</b>. </li>";
-		}
-
-		$message .= '</ul>';
+		$message .= "<ul><li>The PHP constant <b>WP_ENV</b> must be set to <b>production</b> or be undefined. WP_ENV is currently set to: <b>".WP_ENV."</b>. </li></ul>";
 
 		printf( '<div class="error"> <p> %s </p> </div>', $message);
 
