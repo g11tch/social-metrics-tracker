@@ -3,7 +3,7 @@
 Plugin Name: Social Metrics Tracker
 Plugin URI: https://github.com/ChapmanU/wp-social-metrics-tracker
 Description: Collect and display social network shares, likes, tweets, and view counts of posts.
-Version: 1.4.2
+Version: 1.4.3
 Author: Ben Cole, Chapman University
 Author URI: http://www.bencole.net
 License: GPLv2+
@@ -38,7 +38,7 @@ Handlebars_Autoloader::register();
 
 class SocialMetricsTracker {
 
-	public $version = '1.4.2'; // for db upgrade comparison
+	public $version = '1.4.3'; // for db upgrade comparison
 	public $updater;
 	public $options;
 
@@ -139,7 +139,7 @@ class SocialMetricsTracker {
 		wp_register_script( 'smt-js', plugins_url( 'js/social-metrics-tracker.min.js' , __FILE__ ), array('jquery', 'jquery-ui-datepicker'), $this->version );
 		wp_enqueue_script( 'smt-js' );
 
-		wp_enqueue_style('jquery-style', 'http://ajax.googleapis.com/ajax/libs/jqueryui/1.8.2/themes/smoothness/jquery-ui.css');
+		wp_enqueue_style('jquery-style', '//ajax.googleapis.com/ajax/libs/jqueryui/1.8.2/themes/smoothness/jquery-ui.css');
 
 	} // end adminHeaderScripts()
 
@@ -157,7 +157,7 @@ class SocialMetricsTracker {
 	} // end adminMenuSetup()
 
 	public function dashboard_setup() {
-		new SocialMetricsTrackerWidget($this);
+		if ($this->get_smt_option('display_widget')) new SocialMetricsTrackerWidget($this);
 	}
 
 	public function render_view_Dashboard() {
@@ -317,6 +317,14 @@ class SocialMetricsTracker {
 	public function delete_smt_option($key) {
 		$this->initOptions();
 		unset($this->options['smt_options_'.$key]);
+		return $this->save_smt_options();
+	}
+
+	/***************************************************
+	* Merge another array of options into the current, use input to overwrite local settings
+	***************************************************/
+	public function merge_smt_options($options) {
+		$this->options = array_merge($this->options, $options);
 		return $this->save_smt_options();
 	}
 
