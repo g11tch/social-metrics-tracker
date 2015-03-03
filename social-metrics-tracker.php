@@ -279,6 +279,7 @@ class SocialMetricsTracker {
 	* Checks all of the settings and if any are undefined, adds them from the defaults
 	***************************************************/
 	public function add_missing_settings() {
+		$this->initOptions();
 		require('settings/smt-general.php');
 		global $wpsf_settings;
 
