@@ -223,6 +223,7 @@ class SocialMetricsTracker {
 	* Check the version of the plugin and perform upgrade tasks if necessary
 	***************************************************/
 	public function version_check() {
+		$this->initOptions();
 		$installed_version = get_option( "smt_version" );
 
 		if( $installed_version != $this->version ) {
