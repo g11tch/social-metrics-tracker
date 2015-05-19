@@ -327,7 +327,7 @@ class SocialMetricsTable extends WP_List_Table {
 		$querydata = new WP_Query(array(
 			'posts_per_page'=> $per_page,
 			'offset'        => ($this->get_pagenum()-1) * $per_page,
-			'post_status'	=> 'publish',
+			'post_status'	=> array( 'publish', 'inherit' ),
 			'post_type'		=> $post_types
 		));
 
@@ -514,6 +514,8 @@ function smt_render_dashboard_view($smt){
 			$SocialMetricsTable->prepare_items();
 			$SocialMetricsTable->display();
 			?>
+
+			<p align="center">Please <a href="https://wordpress.org/support/view/plugin-reviews/social-metrics-tracker">rate the Social Metrics Tracker</a> plugin if you have found it useful, or <a href="https://wordpress.org/support/plugin/social-metrics-tracker">visit the support forum</a> for help.</p>
 
 		</form>
 

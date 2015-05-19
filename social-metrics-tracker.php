@@ -3,7 +3,7 @@
 Plugin Name: Social Metrics Tracker
 Plugin URI: https://github.com/ChapmanU/wp-social-metrics-tracker
 Description: Collect and display social network shares, likes, tweets, and view counts of posts.
-Version: 1.5.2
+Version: 1.5.3
 Author: Ben Cole, Chapman University
 Author URI: http://www.bencole.net
 License: GPLv2+
@@ -38,7 +38,7 @@ Handlebars_Autoloader::register();
 
 class SocialMetricsTracker {
 
-	public $version = '1.5.2'; // for db upgrade comparison
+	public $version = '1.5.3'; // for db upgrade comparison
 	public $updater;
 	public $options;
 
@@ -209,11 +209,12 @@ class SocialMetricsTracker {
 		$types_to_track = array();
 
 		$smt_post_types = get_post_types( array( 'public' => true ), 'names' );
-		unset($smt_post_types['attachment']);
 
 		foreach ($smt_post_types as $type) {
 			if (isset($this->options['smt_options_post_types_'.$type]) && $this->options['smt_options_post_types_'.$type] == $type) $types_to_track[] = $type;
 		}
+
+		$smt_post_types = apply_filters( 'smt_post_types', $smt_post_types );
 
 		// If none selected, default post types
 		return ($types_to_track) ? $types_to_track : array_values($smt_post_types);
@@ -271,7 +272,7 @@ class SocialMetricsTracker {
 		// Set default post types to track
 		$this->set_smt_option('post_types_post', 'post', false);
 		$this->set_smt_option('post_types_page', 'page', false);
-		$this->add_missing_settings(); // Also saves the two above
+		$this->add_missing_settings(); // Also saves the items above
 
 		$this->version_check();
 	}
