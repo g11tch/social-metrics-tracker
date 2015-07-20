@@ -5,14 +5,14 @@
 * the Shared Count plugin updates an individual post.
 ***************************************************/
 
-class LinkedInUpdater extends HTTPResourceUpdater {
+class XingUpdater extends HTTPResourceUpdater {
 
-	public $slug = 'linkedin';
-	public $name = 'LinkedIn';
+	public $slug  = 'xing';
+	public $name  = 'XING';
 
-	public $enabled_by_default = true;
+	public $enabled_by_default = false;
 
-	private $uri = 'http://www.linkedin.com/countserv/count/share';
+	private $uri = 'https://www.xing-share.com/spi/shares/statistics';
 
 	public function __construct() {
 		$this->updater = parent::__construct($this->slug, $this->name, $this->uri);
@@ -21,8 +21,9 @@ class LinkedInUpdater extends HTTPResourceUpdater {
 	public function setParams($post_id, $post_url = false) {
 		parent::setparams($post_id, $post_url);
 
+		$this->updater->resource_request_method = 'post';
+
 		$this->updater->resource_params = array(
-			'format' => 'json',
 			'url' => $this->updater->post_url
 		);
 	}
@@ -37,7 +38,7 @@ class LinkedInUpdater extends HTTPResourceUpdater {
 
 	// Must return an integer
 	public function get_total() {
-		return ($this->updater->data === null) ? 0 : intval($this->updater->data['count']);
+		return ($this->updater->data === null) ? 0 : intval($this->updater->data['share_counter']);
 	}
 
 }

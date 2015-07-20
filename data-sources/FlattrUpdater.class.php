@@ -5,14 +5,14 @@
 * the Shared Count plugin updates an individual post.
 ***************************************************/
 
-class LinkedInUpdater extends HTTPResourceUpdater {
+class FlattrUpdater extends HTTPResourceUpdater {
 
-	public $slug = 'linkedin';
-	public $name = 'LinkedIn';
+	public $slug  = 'flattr';
+	public $name  = 'Flattr';
 
-	public $enabled_by_default = true;
+	public $enabled_by_default = false;
 
-	private $uri = 'http://www.linkedin.com/countserv/count/share';
+	private $uri = 'https://api.flattr.com/rest/v2/things/lookup';
 
 	public function __construct() {
 		$this->updater = parent::__construct($this->slug, $this->name, $this->uri);
@@ -22,7 +22,6 @@ class LinkedInUpdater extends HTTPResourceUpdater {
 		parent::setparams($post_id, $post_url);
 
 		$this->updater->resource_params = array(
-			'format' => 'json',
 			'url' => $this->updater->post_url
 		);
 	}
@@ -37,7 +36,12 @@ class LinkedInUpdater extends HTTPResourceUpdater {
 
 	// Must return an integer
 	public function get_total() {
-		return ($this->updater->data === null) ? 0 : intval($this->updater->data['count']);
+
+		// If the Flattr service did not find our URL
+		if (!isset($this->updater->data['flattrs'])) return 0;
+		if (isset($this->updater->data['message']) && $this->updater->data['message'] == 'not_found') return 0;
+
+		return ($this->updater->data === null) ? 0 : intval($this->updater->data['flattrs']);
 	}
 
 }

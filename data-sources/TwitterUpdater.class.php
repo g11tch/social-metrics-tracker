@@ -10,6 +10,8 @@ class TwitterUpdater extends HTTPResourceUpdater {
 	public $slug  = 'twitter';
 	public $name  = 'Twitter';
 
+	public $enabled_by_default = true;
+
 	private $uri = 'http://urls.api.twitter.com/1/urls/count.json';
 
 	public function __construct() {
@@ -32,8 +34,9 @@ class TwitterUpdater extends HTTPResourceUpdater {
 		$updater->meta[$this->updater->meta_prefix.$this->updater->slug] = $this->get_total();
 	}
 
+	// Must return an integer
 	public function get_total() {
-		return ($this->updater->data === null) ? 0 : $this->updater->data['count'];
+		return ($this->updater->data === null) ? 0 : intval($this->updater->data['count']);
 	}
 
 }

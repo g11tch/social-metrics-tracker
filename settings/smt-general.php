@@ -9,7 +9,7 @@ global $wpsf_settings;
 
 $wpsf_settings = array();
 
-$wpsf_settings[] = array(
+$wpsf_settings['smt'] = array(
 	'section_id'          => 'options',
 	'section_title'       => 'General Options',
 	'section_description' => 'Configuration for the operation of the plugin and display of data.',

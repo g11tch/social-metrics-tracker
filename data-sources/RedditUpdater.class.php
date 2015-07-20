@@ -5,14 +5,14 @@
 * the Shared Count plugin updates an individual post.
 ***************************************************/
 
-class LinkedInUpdater extends HTTPResourceUpdater {
+class RedditUpdater extends HTTPResourceUpdater {
 
-	public $slug = 'linkedin';
-	public $name = 'LinkedIn';
+	public $slug  = 'reddit';
+	public $name  = 'Reddit';
 
 	public $enabled_by_default = true;
 
-	private $uri = 'http://www.linkedin.com/countserv/count/share';
+	private $uri = 'https://www.reddit.com/api/info.json';
 
 	public function __construct() {
 		$this->updater = parent::__construct($this->slug, $this->name, $this->uri);
@@ -22,7 +22,6 @@ class LinkedInUpdater extends HTTPResourceUpdater {
 		parent::setparams($post_id, $post_url);
 
 		$this->updater->resource_params = array(
-			'format' => 'json',
 			'url' => $this->updater->post_url
 		);
 	}
@@ -37,7 +36,11 @@ class LinkedInUpdater extends HTTPResourceUpdater {
 
 	// Must return an integer
 	public function get_total() {
-		return ($this->updater->data === null) ? 0 : intval($this->updater->data['count']);
+		$count = 0;
+		foreach ($this->updater->data['data']['children'] as $child) {
+			$count += $child['data']['score'];
+		}
+		return ($this->updater->data === null) ? 0 : intval($count);
 	}
 
 }
